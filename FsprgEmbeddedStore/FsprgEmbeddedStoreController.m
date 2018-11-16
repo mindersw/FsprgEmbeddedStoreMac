@@ -13,7 +13,8 @@
 // We don't retrieve SSL certificates below OSX 10.6
 #define RETRIEVE_SSL_CERTIFICATES defined(MAC_OS_X_VERSION_10_6) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_6
 
-@interface FsprgEmbeddedStoreController ()
+
+@interface FsprgEmbeddedStoreController (Private) <WebFrameLoadDelegate,WebUIDelegate,WebResourceLoadDelegate>
 
 - (void)setIsLoading:(BOOL)aFlag;
 - (void)setEstimatedLoadingProgress:(double)aProgress;
@@ -23,13 +24,10 @@
 - (void)webViewFrameChanged:(NSNotification *)aNotification;
 - (NSMutableDictionary *)hostCertificates;
 - (void)setHostCertificates:(NSMutableDictionary *)aHostCertificates;
+- (NSMapTable *)connectionsToRequests;
+- (void)setConnectionsToRequests:(NSMapTable *)aConnectionsToRequests;
 
 @end
-
-#if defined(MAC_OS_X_VERSION_10_11) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_11
-@interface FsprgEmbeddedStoreController () <WebFrameLoadDelegate, WebUIDelegate, WebResourceLoadDelegate>
-@end
-#endif
 
 @implementation FsprgEmbeddedStoreController
 
@@ -49,13 +47,18 @@
 		[self setDelegate:nil];
 		[self setStoreHost:nil];
 		[self setHostCertificates:[NSMutableDictionary dictionary]];
+#if defined(MAC_OS_X_VERSION_10_8) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_8
+		[self setConnectionsToRequests:[NSMapTable strongToStrongObjectsMapTable]];
+#else
+		[self setConnectionsToRequests:[NSMapTable mapTableWithStrongToStrongObjects]];
+#endif
 	}
 	return self;
 }
 
 - (WebView *)webView
 {
-	return [[webView retain] autorelease];
+	return webView;
 }
 
 - (void)setWebView:(WebView *)aWebView
@@ -68,8 +71,7 @@
 		[webView setApplicationNameForUserAgent:nil];
 		[[NSNotificationCenter defaultCenter] removeObserver:self];
 		
-		[webView release];
-		webView = [aWebView retain];
+		webView = aWebView;
 		
 		if (webView) {
 			[webView setPostsFrameChangedNotifications:TRUE];
@@ -182,14 +184,13 @@
 
 - (NSString *)storeHost
 {
-	return [[storeHost retain] autorelease];
+	return storeHost;
 }
 
 - (void)setStoreHost:(NSString *)aHost
 {
 	if (storeHost != aHost) {
-		[storeHost release];
-		storeHost = [aHost retain];
+		storeHost = aHost;
 	}
 }
 
@@ -228,14 +229,23 @@
 
 - (NSMutableDictionary *)hostCertificates
 {
-	return [[hostCertificates retain] autorelease];
+	return hostCertificates;
 }
 - (void)setHostCertificates:(NSMutableDictionary *)anHostCertificates
 {
 	if (hostCertificates != anHostCertificates) {
-		[anHostCertificates retain];
-		[hostCertificates release];
 		hostCertificates = anHostCertificates;
+	}
+}
+
+- (NSMapTable *)connectionsToRequests
+{
+	return connectionsToRequests;
+}
+- (void)setConnectionsToRequests:(NSMapTable *)aConnectionsToRequests
+{
+	if (connectionsToRequests != aConnectionsToRequests) {
+		connectionsToRequests = aConnectionsToRequests;
 	}
 }
 
@@ -244,9 +254,6 @@
 
 - (void)webView:(WebView *)sender didStartProvisionalLoadForFrame:(WebFrame *)frame
 {
-    if ([[self delegate] respondsToSelector:@selector(webView:didStartProvisionalLoadForFrame:)]) {
-        [[self delegate] webView:sender didStartProvisionalLoadForFrame:frame];
-    }
 }
 
 - (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)frame
@@ -294,14 +301,13 @@
 - (void)webView:(WebView *)sender runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame
 {
 	NSString *title = [sender mainFrameTitle];
-	NSAlert *alertPanel = [[NSAlert alloc] init];
-	[alertPanel setMessageText:title];
-	[alertPanel setInformativeText:message];
-#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_9
-	[alertPanel beginSheetModalForWindow:[sender window] modalDelegate:nil didEndSelector:NULL contextInfo:NULL];
-#else
-	[alertPanel beginSheetModalForWindow:[sender window] completionHandler:nil];
-#endif
+    NSAlert *alertPanel = [[NSAlert alloc] init];
+    [alertPanel setMessageText:title];
+    [alertPanel addButtonWithTitle:@"OK"];
+    [alertPanel setInformativeText:message];
+    [alertPanel beginSheetModalForWindow:[sender window] completionHandler:^(NSModalResponse returnCode) {
+        
+    }];
 }
 
 - (NSUInteger)webView:(WebView *)sender dragDestinationActionMaskForDraggingInfo:(id <NSDraggingInfo>)draggingInfo
@@ -315,7 +321,7 @@
 										 styleMask:(NSClosableWindowMask|NSResizableWindowMask)
 										 backing:NSBackingStoreBuffered
 										 defer:NO];
-	WebView *subWebView = [[[WebView alloc] initWithFrame:NSMakeRect(0,0,0,0)] autorelease];
+	WebView *subWebView = [[WebView alloc] initWithFrame:NSMakeRect(0,0,0,0)];
 	[window setReleasedWhenClosed:TRUE];
 	[window setContentView:subWebView];
 	[window makeKeyAndOrderFront:sender];
@@ -325,31 +331,84 @@
 
 #pragma mark - WebResourceLoadDelegate
 
-#if RETRIEVE_SSL_CERTIFICATES
-- (BOOL)webView:(WebView *)sender resource:(id)identifier canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace forDataSource:(WebDataSource *)dataSource
+- (NSURLRequest *)webView:(WebView *)sender resource:(id)identifier willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)redirectResponse fromDataSource:(WebDataSource *)dataSource
 {
-    return TRUE;
+#if RETRIEVE_SSL_CERTIFICATES
+	NSURL *URL = [request URL];
+	NSString *host = [URL host];
+	if ([[self hostCertificates] objectForKey:host] == nil)
+	{
+        NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+        [config setTLSMinimumSupportedProtocol:kTLSProtocol12];
+        NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
+        NSURLSessionDataTask *task = [session dataTaskWithRequest:request];
+        [[self connectionsToRequests] setObject:request forKey:task];
+        [task resume];
+	}
+#endif
+	return request;
 }
 
-- (void)webView:(WebView *)sender resource:(id)identifier didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge fromDataSource:(WebDataSource *)dataSource
+#pragma mark - NURLConnection delegate
+
+#if RETRIEVE_SSL_CERTIFICATES
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask willCacheResponse:(NSCachedURLResponse *)proposedResponse
+ completionHandler:(void (^)(NSCachedURLResponse * __nullable cachedResponse))completionHandler;
 {
-    SecTrustRef trustRef = [[challenge protectionSpace] serverTrust];
-    SecTrustResultType resultType;
-    SecTrustEvaluate(trustRef, &resultType);
-    NSUInteger count = (NSUInteger)SecTrustGetCertificateCount(trustRef);
+	completionHandler(proposedResponse);
+}
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveResponse:(NSURLResponse *)response
+ completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler
+{
+    completionHandler(NSURLSessionResponseAllow);
+}
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask
+    didReceiveData:(NSData *)data
+{
+}
+
+- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)redirectResponse
+{
+	return request;
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(nullable NSError *)error
+{
+	[[self connectionsToRequests] setObject:nil forKey:task];
+}
+
+- (BOOL)connection:(NSURLConnection *)connection canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace
+{
+	return YES;
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential * __nullable credential))completionHandler
+
+{
+	SecTrustRef trustRef = [[challenge protectionSpace] serverTrust];
+	SecTrustResultType resultType;
+	SecTrustEvaluate(trustRef, &resultType);
+	NSUInteger count = (NSUInteger)SecTrustGetCertificateCount(trustRef);
 
     NSMutableArray *certificates = [NSMutableArray arrayWithCapacity:count];
-    CFIndex idx;
-    for (idx = 0; idx < (CFIndex)count; idx++) {
-        SecCertificateRef certificateRef = SecTrustGetCertificateAtIndex(trustRef, idx);
-        [certificates addObject:(id)certificateRef];
-    }
+	CFIndex idx;
+	for (idx = 0; idx < (CFIndex)count; idx++) {
+		SecCertificateRef certificateRef = SecTrustGetCertificateAtIndex(trustRef, idx);
+		[certificates addObject:(__bridge id)certificateRef];
+	}
 
-    NSString *host = [[challenge protectionSpace] host];
+	NSURLRequest *request = [[self connectionsToRequests] objectForKey:task];
+	NSURL *URL = [request URL];
+	NSString *host = [URL host];
     [[self hostCertificates] setObject:certificates forKey:host];
 
-    [[challenge sender] useCredential:[NSURLCredential credentialForTrust:trustRef] forAuthenticationChallenge:challenge];
+    __block NSURLCredential *credential = [NSURLCredential credentialForTrust:trustRef];
+    completionHandler(NSURLSessionAuthChallengeUseCredential,credential);
 }
+
 #endif
 
 
@@ -359,8 +418,8 @@
 	[self setDelegate:nil];
 	[self setStoreHost:nil];
 	[self setHostCertificates:nil];
+	[self setConnectionsToRequests:nil];
 
-	[super dealloc];
 }
 
 @end

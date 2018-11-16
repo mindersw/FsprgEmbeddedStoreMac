@@ -26,7 +26,6 @@ static NSString * const kOption = @"option";
 static NSString * const kReferrer = @"referrer";
 static NSString * const kSource = @"source";
 static NSString * const kCoupon = @"coupon";
-static NSString * const kTags = @"tags";
 static NSString * const kContactFname = @"contact_fname";
 static NSString * const kContactLname = @"contact_lname";
 static NSString * const kContactEmail = @"contact_email";
@@ -37,9 +36,27 @@ static NSMutableDictionary *keyPathsForValuesAffecting;
 
 @implementation FsprgStoreParameters
 
+@synthesize language;
+@synthesize orderProcessType;
+@synthesize storeId;
+@synthesize productId;
+@synthesize mode;
+@synthesize campaign;
+@synthesize option;
+@synthesize referrer;
+@synthesize source;
+@synthesize coupon;
+@synthesize tags;
+@synthesize contactFname;
+@synthesize contactLname;
+@synthesize contactEmail;
+@synthesize contactCompany;
+@synthesize contactPhone;
+
+
 + (void)initialize
 {
-	keyPathsForValuesAffecting = [[NSMutableDictionary dictionaryWithCapacity:1] retain];
+	keyPathsForValuesAffecting = [NSMutableDictionary dictionaryWithCapacity:1];
 	
 	NSSet *toURLSet = [NSSet setWithObjects:NSStringFromSelector(@selector(language)),
 											NSStringFromSelector(@selector(orderProcessType)), 
@@ -60,16 +77,16 @@ static NSMutableDictionary *keyPathsForValuesAffecting;
 	[keyPathsForValuesAffecting setObject:toURLSet forKey:NSStringFromSelector(@selector(toURL))];
 }
 
-+ (FsprgStoreParameters *)parameters
-{
-	NSMutableDictionary *raw = [NSMutableDictionary dictionaryWithCapacity:15];
-	return [[[FsprgStoreParameters alloc] initWithRaw:raw] autorelease];
-}
-
-+ (FsprgStoreParameters *)parametersWithRaw:(NSMutableDictionary *)aRaw
-{
-	return [[[FsprgStoreParameters alloc] initWithRaw:aRaw] autorelease];
-}
+//+ (FsprgStoreParameters *)parameters
+//{
+//    NSMutableDictionary *raw = [NSMutableDictionary dictionaryWithCapacity:15];
+//    return [[FsprgStoreParameters alloc] initWithRaw:raw];
+//}
+//
+//+ (FsprgStoreParameters *)parametersWithRaw:(NSMutableDictionary *)aRaw
+//{
+//    return [[FsprgStoreParameters alloc] initWithRaw:aRaw];
+//}
 
 + (NSSet *)keyPathsForValuesAffectingValueForKey:(NSString *)key
 {
@@ -81,27 +98,26 @@ static NSMutableDictionary *keyPathsForValuesAffecting;
 	}
 }
 
-- (id)initWithRaw:(NSMutableDictionary *)aRaw
-{
-	self = [super init];
-	if (self != nil) {
-		[self setRaw:aRaw];
-	}
-	return self;
-}
+//- (id)initWithRaw:(NSMutableDictionary *)aRaw
+//{
+//    self = [super init];
+//    if (self != nil) {
+//        [self setRaw:aRaw];
+//    }
+//    return self;
+//}
 
-- (NSMutableDictionary *)raw
-{
-    return [[raw retain] autorelease]; 
-}
-
-- (void)setRaw:(NSMutableDictionary *)aRaw
-{
-    if (raw != aRaw) {
-        [raw release];
-        raw = [aRaw retain];
-    }
-}
+//- (NSMutableDictionary *)raw
+//{
+//    return raw;
+//}
+//
+//- (void)setRaw:(NSMutableDictionary *)aRaw
+//{
+//    if (raw != aRaw) {
+//        raw = aRaw;
+//    }
+//}
 
 - (NSURLRequest *)toURLRequest
 {
@@ -115,11 +131,11 @@ static NSMutableDictionary *keyPathsForValuesAffecting;
 
 - (NSURL *)toURL
 {
-	NSString *storeIdEncoded = [[self storeId] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+    NSString *storeIdEncoded = [[self storeId] stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
 	if(storeIdEncoded == nil) {
 		storeIdEncoded = @"";
 	}
-	NSString *productIdEncoded = [[self productId] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+	NSString *productIdEncoded = [[self productId] stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
 	if(productIdEncoded == nil) {
 		productIdEncoded = @"";
 	}
@@ -140,21 +156,20 @@ static NSMutableDictionary *keyPathsForValuesAffecting;
 		return nil;
 	}
 
-	NSMutableArray *keys = [NSMutableArray arrayWithArray:[[self raw] allKeys]];
-	[keys removeObject:kOrderProcessType];
-	[keys removeObject:kStoreId];
-	[keys removeObject:kProductId];
-	[keys sortUsingSelector:@selector(compare:)];
+	NSMutableArray *keys = [[NSMutableArray alloc] initWithArray:
+                            @[@"language",@"mode",@"campaign",@"option",@"referrer",@"source",@"coupon",@"tags",@"contactFname",@"contactLname",@"contactEmail",@"contactCompany",@"contactPhone"]];
+    NSMutableArray *values = [[NSMutableArray alloc] initWithArray:
+                            @[language,mode,campaign,option,referrer,source,coupon,tags,contactFname,contactLname,contactEmail,contactCompany,contactPhone]];
 	
 	NSString *queryStr = @"";
 	NSUInteger i, count = [keys count];
 	for (i = 0; i < count; i++) {
 		NSString *key = [keys objectAtIndex:i];
-		NSString *value = [[self raw] valueForKey:key];
-		if(value != nil) {
+        NSString *value = [values objectAtIndex:i];
+		if (value != nil) {
 			queryStr = [queryStr stringByAppendingFormat:@"&%@=%@",
 						key,
-						[value stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]];
+						[value stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]]];
 		}
 	}
 		
@@ -165,182 +180,174 @@ static NSMutableDictionary *keyPathsForValuesAffecting;
 	return [NSURL URLWithString:urlAsStr];
 }
 
-- (void)setObject:(NSString *)anObject forKey:(NSString *)aKey
-{
-	if(anObject == nil) {
-		[[self raw] removeObjectForKey:aKey];
-	} else {
-		[[self raw] setObject:anObject forKey:aKey];
-	}
-}
-
-- (NSString *)language
-{
-    return [[self raw] objectForKey:kLanguage];
-}
-
-- (void)setLanguage:(NSString *)aLanguage
-{
-	[self setObject:aLanguage forKey:kLanguage];
-}
-
-- (NSString *)orderProcessType
-{
-    return [[self raw] objectForKey:kOrderProcessType];
-}
-- (void)setOrderProcessType:(NSString *)anOrderProcessType
-{
-    [self setObject:anOrderProcessType forKey:kOrderProcessType];
-}
-
+//- (void)setObject:(NSString *)anObject forKey:(NSString *)aKey
+//{
+//    if(anObject == nil) {
+//        [[self raw] removeObjectForKey:aKey];
+//    } else {
+//        [[self raw] setObject:anObject forKey:aKey];
+//    }
+//}
+//
+//- (NSString *)language
+//{
+//    return [[self raw] objectForKey:kLanguage];
+//}
+//
+//- (void)setLanguage:(NSString *)aLanguage
+//{
+//    [self setObject:aLanguage forKey:kLanguage];
+//}
+//
+//- (NSString *)orderProcessType
+//{
+//    return [[self raw] objectForKey:kOrderProcessType];
+//}
+//- (void)setOrderProcessType:(NSString *)anOrderProcessType
+//{
+//    [self setObject:anOrderProcessType forKey:kOrderProcessType];
+//}
+//
 - (void)setStoreId:(NSString *)aStoreId withProductId:(NSString *)aProductId
 {
-	[self setStoreId:aStoreId];
-	[self setProductId:aProductId];
+    [self setStoreId:aStoreId];
+    [self setProductId:aProductId];
 }
-
-- (NSString *)storeId
-{
-    return [[self raw] objectForKey:kStoreId];
-}
-- (void)setStoreId:(NSString *)aStoreId
-{
-    [self setObject:aStoreId forKey:kStoreId];
-}
-
-- (NSString *)productId
-{
-    return [[self raw] objectForKey:kProductId];
-}
-- (void)setProductId:(NSString *)aProductId
-{
-    [self setObject:aProductId forKey:kProductId];
-}
-
-- (NSString *)mode
-{
-	return [[self raw] objectForKey:kMode];
-}
-- (void)setMode:(NSString *)aMode
-{
-	[self setObject:aMode forKey:kMode];
-}
-
-- (NSString *)campaign
-{
-    return [[self raw] objectForKey:kCampaign];
-}
-- (void)setCampaign:(NSString *)aCampaign
-{
-	[self setObject:aCampaign forKey:kCampaign];
-}
-
-- (NSString *)option
-{
-    return [[self raw] objectForKey:kOption];
-}
-- (void)setOption:(NSString *)anOption
-{
-	[self setObject:anOption forKey:kOption];
-}
-
-- (NSString *)referrer
-{
-    return [[self raw] objectForKey:kReferrer];
-}
-- (void)setReferrer:(NSString *)aReferrer
-{
-	[self setObject:aReferrer forKey:kReferrer];
-}
-
-- (NSString *)source
-{
-    return [[self raw] objectForKey:kSource];
-}
-- (void)setSource:(NSString *)aSource
-{
-	[self setObject:aSource forKey:kSource];
-}
-
-- (NSString *)coupon
-{
-	return [[self raw] objectForKey:kCoupon];
-}
-- (void)setCoupon:(NSString *)aCoupon
-{
-	[self setObject:aCoupon forKey:kCoupon];
-}
-
-- (NSString *)tags
-{
-    return [[self raw] objectForKey:kTags];
-}
-- (void)setTags:(NSString *)aTags
-{
-    [self setObject:aTags forKey:kTags];
-}
+//
+//- (NSString *)storeId
+//{
+//    return [[self raw] objectForKey:kStoreId];
+//}
+//- (void)setStoreId:(NSString *)aStoreId
+//{
+//    [self setObject:aStoreId forKey:kStoreId];
+//}
+//
+//- (NSString *)productId
+//{
+//    return [[self raw] objectForKey:kProductId];
+//}
+//- (void)setProductId:(NSString *)aProductId
+//{
+//    [self setObject:aProductId forKey:kProductId];
+//}
+//
+//- (NSString *)mode
+//{
+//    return [[self raw] objectForKey:kMode];
+//}
+//- (void)setMode:(NSString *)aMode
+//{
+//    [self setObject:aMode forKey:kMode];
+//}
+//
+//- (NSString *)campaign
+//{
+//    return [[self raw] objectForKey:kCampaign];
+//}
+//- (void)setCampaign:(NSString *)aCampaign
+//{
+//    [self setObject:aCampaign forKey:kCampaign];
+//}
+//
+//- (NSString *)option
+//{
+//    return [[self raw] objectForKey:kOption];
+//}
+//- (void)setOption:(NSString *)anOption
+//{
+//    [self setObject:anOption forKey:kOption];
+//}
+//
+//- (NSString *)referrer
+//{
+//    return [[self raw] objectForKey:kReferrer];
+//}
+//- (void)setReferrer:(NSString *)aReferrer
+//{
+//    [self setObject:aReferrer forKey:kReferrer];
+//}
+//
+//- (NSString *)source
+//{
+//    return [[self raw] objectForKey:kSource];
+//}
+//- (void)setSource:(NSString *)aSource
+//{
+//    [self setObject:aSource forKey:kSource];
+//}
+//
+//- (NSString *)coupon
+//{
+//    return [[self raw] objectForKey:kCoupon];
+//}
+//- (void)setCoupon:(NSString *)aCoupon
+//{
+//    [self setObject:aCoupon forKey:kCoupon];
+//}
 
 - (BOOL)hasContactDefaults
 {
-	NSArray *allKeys = [[self raw] allKeys];
+//    NSArray *allKeys = [[self raw] allKeys];
 
-	return [allKeys containsObject:kContactFname] ||
-		   [allKeys containsObject:kContactLname] ||
-		   [allKeys containsObject:kContactEmail] ||
-		   [allKeys containsObject:kContactCompany] ||
-		   [allKeys containsObject:kContactPhone];
-}
+    if (self.contactFname != nil) return YES;
+    if (self.contactLname != nil) return YES;
+    if (self.contactEmail != nil) return YES;
+    if (self.contactCompany != nil) return YES;
+    if (self.contactPhone != nil) return YES;
 
-- (NSString *)contactFname
-{
-    return [[self raw] objectForKey:kContactFname];
-}
-- (void)setContactFname:(NSString *)aContactFname
-{
-	[self setObject:aContactFname forKey:kContactFname];
+    return NO;
 }
 
-- (NSString *)contactLname
-{
-    return [[self raw] objectForKey:kContactLname];
-}
-- (void)setContactLname:(NSString *)aContactLname
-{
-	[self setObject:aContactLname forKey:kContactLname];
-}
-
-- (NSString *)contactEmail
-{
-    return [[self raw] objectForKey:kContactEmail];
-}
-- (void)setContactEmail:(NSString *)aContactEmail
-{
-	[self setObject:aContactEmail forKey:kContactEmail];
-}
-
-- (NSString *)contactCompany
-{
-    return [[self raw] objectForKey:kContactCompany];
-}
-- (void)setContactCompany:(NSString *)aContactCompany
-{
-	[self setObject:aContactCompany forKey:kContactCompany];
-}
-
-- (NSString *)contactPhone
-{
-    return [[self raw] objectForKey:kContactPhone];
-}
-- (void)setContactPhone:(NSString *)aContactPhone
-{
-	[self setObject:aContactPhone forKey:kContactPhone];
-}
-
-- (void)dealloc
-{
-    [self setRaw:nil];
-	
-    [super dealloc];
-}
+//- (NSString *)contactFname
+//{
+//    return [[self raw] objectForKey:kContactFname];
+//}
+//- (void)setContactFname:(NSString *)aContactFname
+//{
+//    [self setObject:aContactFname forKey:kContactFname];
+//}
+//
+//- (NSString *)contactLname
+//{
+//    return [[self raw] objectForKey:kContactLname];
+//}
+//- (void)setContactLname:(NSString *)aContactLname
+//{
+//    [self setObject:aContactLname forKey:kContactLname];
+//}
+//
+//- (NSString *)contactEmail
+//{
+//    return [[self raw] objectForKey:kContactEmail];
+//}
+//- (void)setContactEmail:(NSString *)aContactEmail
+//{
+//    [self setObject:aContactEmail forKey:kContactEmail];
+//}
+//
+//- (NSString *)contactCompany
+//{
+//    return [[self raw] objectForKey:kContactCompany];
+//}
+//- (void)setContactCompany:(NSString *)aContactCompany
+//{
+//    [self setObject:aContactCompany forKey:kContactCompany];
+//}
+//
+//- (NSString *)contactPhone
+//{
+//    return [[self raw] objectForKey:kContactPhone];
+//}
+//- (void)setContactPhone:(NSString *)aContactPhone
+//{
+//    [self setObject:aContactPhone forKey:kContactPhone];
+//}
+//
+//- (void)dealloc
+//{
+//    [self setRaw:nil];
+//
+//}
 
 @end

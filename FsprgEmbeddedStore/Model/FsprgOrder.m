@@ -14,22 +14,15 @@
 + (FsprgOrder *)orderFromData:(NSData *)aData
 {
 	NSPropertyListFormat *format = nil;
-	NSString *errorDesc = nil;
-
-#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_6
-	NSDictionary *aDict = [NSPropertyListSerialization propertyListFromData:aData
-													   mutabilityOption:NSPropertyListImmutable
-													   format:format 
-													   errorDescription:&errorDesc];
-		
-#else
-	NSDictionary *aDict = [NSPropertyListSerialization propertyListWithData:aData
-																	options:NSPropertyListImmutable
-																	 format:format
-																	  error:nil];
-#endif
+	NSError *error = nil;
 	
-	return [[[FsprgOrder alloc] initWithDictionary:aDict] autorelease];
+    NSDictionary *aDict = [NSPropertyListSerialization propertyListWithData:aData
+                                                           options:NSPropertyListImmutable
+                                                           format:format
+                                                           error:&error];
+		
+	
+	return [[FsprgOrder alloc] initWithDictionary:aDict];
 }
 
 - (FsprgOrder *)initWithDictionary:(NSDictionary *)aDictionary
@@ -42,13 +35,12 @@
 }									
 - (NSDictionary *)raw
 {
-    return [[raw retain] autorelease]; 
+    return raw; 
 }
 - (void)setRaw:(NSDictionary *)aDictionary
 {
     if (raw != aDictionary) {
-        [raw release];
-        raw = [aDictionary retain];
+        raw = aDictionary;
     }
 }
 
@@ -132,7 +124,6 @@
 {
     [self setRaw:nil];
 	
-    [super dealloc];
 }
 
 @end
